@@ -275,7 +275,23 @@
                 const result = await response.json();
                 
                 if (response.ok) {
-                    showStatus('uploadStatus', result.message, 'success');
+                    // Формируем сообщение с накопительной статистикой
+                    let message = result.message;
+                    
+                    if (result.total_records) {
+                        const breakdown = result.breakdown;
+                        let breakdownText = '';
+                        
+                        if (breakdown.clients > 0) breakdownText += `${breakdown.clients} клиентов`;
+                        if (breakdown.transactions > 0) breakdownText += (breakdownText ? ' + ' : '') + `${breakdown.transactions} транзакций`;
+                        if (breakdown.transfers > 0) breakdownText += (breakdownText ? ' + ' : '') + `${breakdown.transfers} переводов`;
+                        
+                        if (breakdownText) {
+                            message += ` | Всего данных: ${breakdownText} = ${result.total_records} записей`;
+                        }
+                    }
+                    
+                    showStatus('uploadStatus', message, 'success');
                 } else {
                     showStatus('uploadStatus', result.error, 'error');
                 }

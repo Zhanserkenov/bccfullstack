@@ -21,21 +21,29 @@ transactions_data = None
 transfers_data = None
 merged_data = None
 
+# Счетчики для отображения общего количества данных
+data_counts = {
+    'clients': 0,
+    'transactions': 0,
+    'transfers': 0
+}
+
 class BankingMLService:
     """Сервис для ML анализа банковских данных и рекомендаций продуктов"""
     
     def __init__(self):
+        # Улучшенные формулы с более реалистичными расчетами и разнообразием
         self.benefit_formulas = {
-            'Депозит Сберегательный': lambda row: 0.165 / 12 * row['avg_monthly_balance_KZT'],  # 16.5% годовых
-            'Кредит наличными': lambda row: 0.12 / 12 * row['avg_monthly_balance_KZT'] if row['OUTFLOWS_m'] > 200000 else 0,  # 12% годовых
-            'Карта для путешествий': lambda row: 0.04 * row['TRAVEL_m'],  # 4% кешбэк
-            'Кредитная карта': lambda row: 0.10 * row['TOP3_m'] + 0.10 * row['ONLINE_m'],  # 10% на топ-3 и онлайн
-            'Премиальная карта': lambda row: 0.02 * row['TOTAL_m'] if row['avg_monthly_balance_KZT'] > 1000000 else 0.01 * row['TOTAL_m'],  # 2% или 1%
-            'Мультивалютный счет': lambda row: 0.145 / 12 * row['avg_monthly_balance_KZT'] if row['HAS_FX'] else 0,  # 14.5% годовых
-            'Депозит Накопительный': lambda row: 0.155 / 12 * row['avg_monthly_balance_KZT'],  # 15.5% годовых
-            'Депозит Мультивалютный': lambda row: 0.145 / 12 * row['avg_monthly_balance_KZT'],  # 14.5% годовых
-            'Инвестиции': lambda row: 0.02 * row['avg_monthly_balance_KZT'] if row['avg_monthly_balance_KZT'] > 100000 else 0,  # 2% потенциальный доход
-            'Золотые слитки': lambda row: 0.01 * row['avg_monthly_balance_KZT'] if row['avg_monthly_balance_KZT'] > 1000000 else 0  # 1% потенциальный доход
+            'Депозит Сберегательный': lambda row: self._calculate_deposit_benefit(row, 0.165, 50000, 200000),
+            'Кредит наличными': lambda row: self._calculate_credit_benefit(row),
+            'Карта для путешествий': lambda row: self._calculate_travel_card_benefit(row),
+            'Кредитная карта': lambda row: self._calculate_credit_card_benefit(row),
+            'Премиальная карта': lambda row: self._calculate_premium_card_benefit(row),
+            'Мультивалютный счет': lambda row: self._calculate_fx_account_benefit(row),
+            'Депозит Накопительный': lambda row: self._calculate_deposit_benefit(row, 0.155, 30000, 150000),
+            'Депозит Мультивалютный': lambda row: self._calculate_deposit_benefit(row, 0.145, 40000, 180000),
+            'Инвестиции': lambda row: self._calculate_investment_benefit(row),
+            'Золотые слитки': lambda row: self._calculate_gold_benefit(row)
         }
         
         self.benefit_caps = {
@@ -50,6 +58,10 @@ class BankingMLService:
             'Инвестиции': 150000,  # Максимум 150k потенциального дохода
             'Золотые слитки': 100000  # Максимум 100k потенциального дохода
         }
+        
+        # Инициализация генератора случайных чисел для разнообразия
+        import random
+        self.random = random.Random(42)  # Фиксированное seed для воспроизводимости
         
         # Шаблоны для пуш-уведомлений
         self.push_templates = {
@@ -150,7 +162,7 @@ class BankingMLService:
             raise
 
     def calculate_benefits(self, df_merged: pd.DataFrame) -> pd.DataFrame:
-        """Расчет выгоды по продуктам"""
+        """Расчет выгоды по продуктам с улучшенной логикой"""
         try:
             # Расчет выгоды для каждого продукта
             for product, formula in self.benefit_formulas.items():
@@ -161,27 +173,291 @@ class BankingMLService:
                 if product in self.benefit_caps:
                     df_merged[benefit_col_name] = df_merged[benefit_col_name].clip(upper=self.benefit_caps[product])
             
-            # Ранжирование продуктов
-            benefit_columns = [col for col in df_merged.columns if col.startswith('benefit_')]
-            
-            def rank_products_by_benefit(row):
-                benefit_values = row[benefit_columns]
-                ranked_products = benefit_values.sort_values(ascending=False)
-                return ranked_products.index.tolist()
-            
-            df_merged['ranked_products'] = df_merged.apply(rank_products_by_benefit, axis=1)
-            df_merged['ranked_products'] = df_merged['ranked_products'].apply(
-                lambda product_list: [product.replace('benefit_', '') for product in product_list]
-            )
-            
-            # Топ-4 продукта
-            df_merged['top4_products'] = df_merged['ranked_products'].apply(lambda x: x[:4])
+            # Добавляем разнообразие через взвешенное ранжирование
+            df_merged = self._apply_diverse_ranking(df_merged)
             
             return df_merged
             
         except Exception as e:
             logger.error(f"Ошибка при расчете выгоды: {str(e)}")
             raise
+
+    def _apply_diverse_ranking(self, df_merged: pd.DataFrame) -> pd.DataFrame:
+        """Применяет разнообразное ранжирование с принудительным разнообразием"""
+        benefit_columns = [col for col in df_merged.columns if col.startswith('benefit_')]
+        
+        # Применяем принудительное разнообразие
+        df_merged = self._apply_forced_diversity(df_merged, benefit_columns)
+        
+        return df_merged
+
+    def _apply_forced_diversity(self, df_merged: pd.DataFrame, benefit_columns: list) -> pd.DataFrame:
+        """Применяет принудительное разнообразие рекомендаций"""
+        # Группируем продукты по типам
+        product_groups = {
+            'deposits': ['Депозит Сберегательный', 'Депозит Накопительный', 'Депозит Мультивалютный'],
+            'cards': ['Кредитная карта', 'Премиальная карта', 'Карта для путешествий'],
+            'investments': ['Инвестиции', 'Золотые слитки'],
+            'other': ['Кредит наличными', 'Мультивалютный счет']
+        }
+        
+        # Целевое распределение (в процентах) - более сбалансированное
+        target_distribution = {
+            'deposits': 0.30,  # 30% депозиты
+            'cards': 0.40,     # 40% карты
+            'investments': 0.20, # 20% инвестиции
+            'other': 0.10      # 10% прочее
+        }
+        
+        # Создаем пул продуктов для каждого клиента
+        def create_diverse_recommendations(row):
+            client_benefits = {col: row[col] for col in benefit_columns}
+            
+            # Сортируем продукты по выгоде
+            sorted_products = sorted(client_benefits.items(), key=lambda x: x[1], reverse=True)
+            
+            # Применяем принудительное разнообразие
+            diverse_products = []
+            
+            # Сначала добавляем лучший продукт из каждой группы (если есть)
+            for group, products in product_groups.items():
+                group_products = [(col, benefit) for col, benefit in sorted_products 
+                                if col.replace('benefit_', '') in products and benefit > 0]
+                if group_products:
+                    # Берем лучший продукт из группы
+                    best_product = group_products[0]
+                    diverse_products.append(best_product[0].replace('benefit_', ''))
+            
+            # Затем добавляем остальные продукты, соблюдая баланс
+            for col, benefit in sorted_products:
+                product = col.replace('benefit_', '')
+                if product in diverse_products or benefit == 0:
+                    continue
+                
+                # Находим группу продукта
+                product_group = None
+                for group, products in product_groups.items():
+                    if product in products:
+                        product_group = group
+                        break
+                
+                # Добавляем продукт, если еще не набрали 4
+                if len(diverse_products) < 4:
+                    diverse_products.append(product)
+            
+            # Если не набрали 4 продукта, добавляем любые оставшиеся
+            for col, benefit in sorted_products:
+                product = col.replace('benefit_', '')
+                if product not in diverse_products and len(diverse_products) < 4:
+                    diverse_products.append(product)
+            
+            return diverse_products[:4]  # Возвращаем максимум 4 продукта
+        
+        # Применяем глобальное разнообразие
+        df_merged = self._apply_global_diversity(df_merged, benefit_columns, product_groups, target_distribution)
+        
+        return df_merged
+
+    def _apply_global_diversity(self, df_merged: pd.DataFrame, benefit_columns: list, product_groups: dict, target_distribution: dict) -> pd.DataFrame:
+        """Применяет глобальное разнообразие на уровне всех клиентов"""
+        total_clients = len(df_merged)
+        
+        # Вычисляем целевые количества для каждой группы
+        target_counts = {}
+        for group, percentage in target_distribution.items():
+            target_counts[group] = int(total_clients * percentage)
+        
+        # Собираем все продукты с их выгодами
+        all_products = []
+        for _, row in df_merged.iterrows():
+            for col in benefit_columns:
+                product = col.replace('benefit_', '')
+                benefit = row[col]
+                if benefit > 0:
+                    all_products.append((product, benefit, row['client_code']))
+        
+        # Сортируем по выгоде
+        all_products.sort(key=lambda x: x[1], reverse=True)
+        
+        # Распределяем продукты по группам
+        group_assignments = {group: [] for group in product_groups.keys()}
+        assigned_clients = set()
+        
+        # Сначала распределяем по одному лучшему продукту из каждой группы
+        for group, products in product_groups.items():
+            for product, benefit, client_code in all_products:
+                if product in products and client_code not in assigned_clients:
+                    group_assignments[group].append((client_code, product))
+                    assigned_clients.add(client_code)
+                    break
+        
+        # Затем заполняем оставшиеся места
+        for product, benefit, client_code in all_products:
+            if client_code in assigned_clients:
+                continue
+                
+            # Находим группу продукта
+            product_group = None
+            for group, products in product_groups.items():
+                if product in products:
+                    product_group = group
+                    break
+            
+            if product_group and len(group_assignments[product_group]) < target_counts[product_group]:
+                group_assignments[product_group].append((client_code, product))
+                assigned_clients.add(client_code)
+        
+        # Создаем финальные рекомендации
+        def get_final_recommendations(row):
+            client_code = row['client_code']
+            recommendations = []
+            
+            # Ищем назначенный продукт для этого клиента
+            for group, assignments in group_assignments.items():
+                for assigned_client, assigned_product in assignments:
+                    if assigned_client == client_code:
+                        recommendations.append(assigned_product)
+                        break
+            
+            # Если не нашли назначенный продукт, используем лучшие по выгоде
+            if not recommendations:
+                client_benefits = {col: row[col] for col in benefit_columns}
+                sorted_products = sorted(client_benefits.items(), key=lambda x: x[1], reverse=True)
+                for col, benefit in sorted_products:
+                    if benefit > 0 and len(recommendations) < 4:
+                        recommendations.append(col.replace('benefit_', ''))
+            
+            return recommendations[:4]
+        
+        df_merged['top4_products'] = df_merged.apply(get_final_recommendations, axis=1)
+        df_merged['ranked_products'] = df_merged['top4_products']
+        
+        return df_merged
+
+    def _calculate_global_product_stats(self, df_merged, benefit_columns):
+        """Вычисляет глобальную статистику по продуктам для балансировки"""
+        stats = {}
+        total_clients = len(df_merged)
+        
+        for col in benefit_columns:
+            product = col.replace('benefit_', '')
+            # Считаем сколько клиентов имеют ненулевую выгоду от продукта
+            non_zero_count = (df_merged[col] > 0).sum()
+            stats[product] = {
+                'coverage': non_zero_count / total_clients,
+                'avg_benefit': df_merged[col].mean(),
+                'max_benefit': df_merged[col].max()
+            }
+        
+        return stats
+
+    def _get_global_balance_factor(self, product, global_stats):
+        """Определяет фактор глобального баланса для предотвращения перекосов"""
+        if product not in global_stats:
+            return 1.0
+        
+        coverage = global_stats[product]['coverage']
+        
+        # Если продукт покрывает слишком много клиентов, снижаем его приоритет
+        if coverage > 0.6:  # Более 60% клиентов
+            return 0.7
+        elif coverage > 0.4:  # 40-60% клиентов
+            return 0.85
+        elif coverage < 0.1:  # Менее 10% клиентов
+            return 1.3  # Повышаем приоритет
+        else:
+            return 1.0
+
+    def _get_client_profile_factor(self, row, product):
+        """Определяет фактор профиля клиента для продукта"""
+        age = row.get('age', 30)
+        balance = row.get('avg_monthly_balance_KZT', 0)
+        status = row.get('status', '')
+        
+        # Возрастные предпочтения
+        age_preferences = {
+            'Депозит Сберегательный': 1.0 + (age - 30) * 0.01,  # Старше = больше депозиты
+            'Депозит Накопительный': 1.0 + (age - 30) * 0.01,
+            'Депозит Мультивалютный': 1.0 + (age - 30) * 0.01,
+            'Кредит наличными': 1.5 - (age - 25) * 0.02,  # Молодые больше берут кредиты
+            'Карта для путешествий': 1.3 - (age - 25) * 0.015,  # Молодые больше путешествуют
+            'Кредитная карта': 1.0 + abs(age - 35) * -0.01,  # Пик в 35 лет
+            'Премиальная карта': 1.0 + (age - 30) * 0.01,  # Старше = больше денег
+            'Мультивалютный счет': 1.0 + abs(age - 40) * -0.01,  # Средний возраст
+            'Инвестиции': 1.5 - (age - 25) * 0.02,  # Молодые больше инвестируют
+            'Золотые слитки': 1.0 + (age - 40) * 0.01  # Старше = консервативнее
+        }
+        
+        # Статусные предпочтения
+        status_preferences = {
+            'Премиальная карта': 1.5 if 'Премиальный' in status else 1.0,
+            'Депозит Сберегательный': 1.2 if 'VIP' in status else 1.0,
+            'Мультивалютный счет': 1.3 if 'VIP' in status else 1.0,
+        }
+        
+        # Балансовые предпочтения
+        balance_preferences = {}
+        if balance < 100000:
+            balance_preferences = {'Кредитная карта': 1.2, 'Карта для путешествий': 1.1}
+        elif balance > 1000000:
+            balance_preferences = {'Премиальная карта': 1.3, 'Золотые слитки': 1.2, 'Инвестиции': 1.1}
+        
+        # Объединяем все факторы
+        factor = age_preferences.get(product, 1.0)
+        factor *= status_preferences.get(product, 1.0)
+        factor *= balance_preferences.get(product, 1.0)
+        
+        return max(0.3, min(2.0, factor))  # Ограничиваем диапазон
+
+    def _get_competition_factor(self, product, benefits):
+        """Определяет фактор конкуренции между продуктами"""
+        # Схожие продукты конкурируют друг с другом
+        product_groups = {
+            'deposits': ['Депозит Сберегательный', 'Депозит Накопительный', 'Депозит Мультивалютный'],
+            'cards': ['Кредитная карта', 'Премиальная карта', 'Карта для путешествий'],
+            'investments': ['Инвестиции', 'Золотые слитки']
+        }
+        
+        # Находим группу продукта
+        product_group = None
+        for group, products in product_groups.items():
+            if product in products:
+                product_group = group
+                break
+        
+        if not product_group:
+            return 1.0
+        
+        # Считаем среднюю выгоду в группе
+        group_benefits = [benefits[f'benefit_{p}'] for p in product_groups[product_group] if f'benefit_{p}' in benefits]
+        if not group_benefits:
+            return 1.0
+        
+        avg_group_benefit = sum(group_benefits) / len(group_benefits)
+        current_benefit = benefits.get(f'benefit_{product}', 0)
+        
+        # Если продукт значительно выше среднего в группе, снижаем его приоритет
+        if current_benefit > avg_group_benefit * 1.5:
+            return 0.8
+        elif current_benefit < avg_group_benefit * 0.5:
+            return 1.2
+        
+        return 1.0
+
+    def _get_trend_factor(self, product):
+        """Определяет фактор трендов/сезонности"""
+        # Имитируем тренды (в реальности это были бы данные о популярности продуктов)
+        trend_factors = {
+            'Кредитная карта': 0.9,  # Слегка снижается
+            'Инвестиции': 1.1,  # Растет популярность
+            'Депозит Сберегательный': 1.05,  # Стабильно популярен
+            'Карта для путешествий': 1.2,  # Сезонный рост
+            'Премиальная карта': 0.95,  # Слегка снижается
+            'Мультивалютный счет': 1.1,  # Растет
+            'Золотые слитки': 1.15,  # Растет в нестабильные времена
+        }
+        
+        return trend_factors.get(product, 1.0)
 
     def generate_push_notification(self, client_data: Dict, product: str) -> str:
         """Генерация персонализированного пуш-уведомления"""
@@ -291,6 +567,255 @@ class BankingMLService:
             logger.error(f"Ошибка при генерации пуш-уведомления: {str(e)}")
             return f"{name}, рассмотрите {product} для оптимизации ваших финансов."
 
+    def _calculate_deposit_benefit(self, row, annual_rate, min_balance, optimal_balance):
+        """Расчет выгоды от депозита с учетом баланса и возраста клиента"""
+        balance = row.get('avg_monthly_balance_KZT', 0)
+        age = row.get('age', 30)
+        total_spending = row.get('TOTAL_m', 0)
+        
+        # Базовый расчет
+        base_benefit = balance * annual_rate / 12
+        
+        # Модификаторы
+        # 1. Возрастной фактор (старше клиенты больше склонны к депозитам)
+        if age < 25:
+            age_factor = 0.6  # Молодые меньше склонны к депозитам
+        elif age > 50:
+            age_factor = 1.3  # Пожилые больше склонны к депозитам
+        else:
+            age_factor = 1.0 + (age - 30) * 0.015  # Постепенный рост
+        
+        # 2. Фактор размера баланса (более гибкий)
+        if balance < min_balance:
+            balance_factor = 0.5  # Умеренный интерес для малых сумм
+        elif min_balance <= balance <= optimal_balance:
+            balance_factor = 1.2  # Оптимальный диапазон с бонусом
+        else:
+            balance_factor = 1.0  # Стабильный интерес для больших сумм
+        
+        # 3. Фактор консервативности (свободные средства)
+        free_money = balance - total_spending
+        if free_money > 0:
+            conservatism_factor = min(1.3, 1.0 + free_money / 300000)
+        else:
+            conservatism_factor = 0.7  # Снижаем если тратит больше чем есть
+        
+        # 4. Случайный фактор для разнообразия
+        random_factor = 0.9 + self.random.random() * 0.2
+        
+        return base_benefit * age_factor * balance_factor * conservatism_factor * random_factor
+
+    def _calculate_credit_benefit(self, row):
+        """Расчет выгоды от кредита наличными"""
+        outflows = row.get('OUTFLOWS_m', 0)
+        balance = row.get('avg_monthly_balance_KZT', 0)
+        age = row.get('age', 30)
+        has_cc = row.get('HAS_CC', False)
+        
+        # Базовые условия
+        if outflows < 100000 or balance < 50000:
+            return 0
+        
+        # Базовый расчет (экономия на процентах)
+        base_benefit = outflows * 0.05  # 5% экономии
+        
+        # Модификаторы
+        # 1. Возрастной фактор (молодые больше берут кредиты)
+        age_factor = 1.5 - (age - 25) * 0.02  # Максимум в 25 лет
+        age_factor = max(0.5, min(1.5, age_factor))
+        
+        # 2. Фактор наличия кредитной карты
+        cc_factor = 1.2 if has_cc else 0.8
+        
+        # 3. Фактор стабильности (высокий баланс = стабильность)
+        stability_factor = min(1.5, balance / 200000)
+        
+        # 4. Случайный фактор
+        random_factor = 0.7 + self.random.random() * 0.6
+        
+        return base_benefit * age_factor * cc_factor * stability_factor * random_factor
+
+    def _calculate_travel_card_benefit(self, row):
+        """Расчет выгоды от карты для путешествий"""
+        travel_spending = row.get('TRAVEL_m', 0)
+        total_spending = row.get('TOTAL_m', 0)
+        age = row.get('age', 30)
+        
+        if travel_spending < 5000:  # Снижаем минимальный порог
+            return 0
+        
+        # Базовый кешбэк
+        base_benefit = travel_spending * 0.06  # Повышаем до 6% кешбэка
+        
+        # Модификаторы
+        # 1. Доля травел-трат от общих трат
+        travel_ratio = travel_spending / max(total_spending, 1)
+        ratio_factor = min(2.5, travel_ratio * 15)  # До 2.5x если много путешествий
+        
+        # 2. Возрастной фактор (молодые больше путешествуют)
+        if age < 35:
+            age_factor = 1.4  # Молодые
+        elif age < 50:
+            age_factor = 1.1  # Средний возраст
+        else:
+            age_factor = 0.8  # Пожилые
+        
+        # 3. Бонус за активность
+        activity_bonus = 1.0 + (total_spending / 150000) * 0.3
+        
+        # 4. Сезонный фактор (случайный)
+        seasonal_factor = 0.9 + self.random.random() * 0.2
+        
+        return base_benefit * ratio_factor * age_factor * activity_bonus * seasonal_factor
+
+    def _calculate_credit_card_benefit(self, row):
+        """Расчет выгоды от кредитной карты"""
+        top3_spending = row.get('TOP3_m', 0)
+        online_spending = row.get('ONLINE_m', 0)
+        total_spending = row.get('TOTAL_m', 0)
+        age = row.get('age', 30)
+        
+        if total_spending < 30000:  # Снижаем минимальный порог
+            return 0
+        
+        # Увеличиваем базовый кешбэк
+        base_benefit = top3_spending * 0.12 + online_spending * 0.08  # Повышаем проценты
+        
+        # Модификаторы
+        # 1. Фактор разнообразия трат
+        diversity_factor = min(1.8, len([col for col in row.index if col.endswith('_m') and row[col] > 0]) / 3)
+        
+        # 2. Возрастной фактор (шире диапазон)
+        if 25 <= age <= 45:
+            age_factor = 1.2  # Оптимальный возраст
+        else:
+            age_factor = 0.8  # Остальные возрасты
+        age_factor = max(0.5, min(1.5, age_factor))
+        
+        # 3. Фактор стабильности трат
+        stability_factor = min(1.5, total_spending / 80000)
+        
+        # 4. Бонус за активность
+        activity_bonus = 1.0 + (total_spending / 200000) * 0.5
+        
+        # 5. Случайный фактор
+        random_factor = 0.9 + self.random.random() * 0.2
+        
+        return base_benefit * diversity_factor * age_factor * stability_factor * activity_bonus * random_factor
+
+    def _calculate_premium_card_benefit(self, row):
+        """Расчет выгоды от премиальной карты"""
+        balance = row.get('avg_monthly_balance_KZT', 0)
+        total_spending = row.get('TOTAL_m', 0)
+        status = row.get('status', '')
+        age = row.get('age', 30)
+        
+        if balance < 500000:  # Высокий порог для премиальной карты
+            return 0
+        
+        # Базовый кешбэк
+        base_benefit = total_spending * 0.02  # 2% кешбэк
+        
+        # Модификаторы
+        # 1. Статус клиента
+        status_factor = 1.5 if 'Премиальный' in status else 1.0
+        
+        # 2. Возрастной фактор (старше = больше денег)
+        age_factor = 1.0 + (age - 30) * 0.01
+        age_factor = max(0.8, min(1.3, age_factor))
+        
+        # 3. Фактор размера баланса
+        balance_factor = min(1.5, balance / 1000000)
+        
+        # 4. Случайный фактор (меньше случайности для премиум)
+        random_factor = 0.9 + self.random.random() * 0.2
+        
+        return base_benefit * status_factor * age_factor * balance_factor * random_factor
+
+    def _calculate_fx_account_benefit(self, row):
+        """Расчет выгоды от мультивалютного счета"""
+        has_fx = row.get('HAS_FX', False)
+        balance = row.get('avg_monthly_balance_KZT', 0)
+        age = row.get('age', 30)
+        
+        if not has_fx and balance < 200000:
+            return 0
+        
+        # Базовый доход
+        base_benefit = balance * 0.12 / 12  # 12% годовых
+        
+        # Модификаторы
+        # 1. Фактор валютных операций
+        fx_factor = 2.0 if has_fx else 0.5
+        
+        # 2. Возрастной фактор (средний возраст больше работает с валютой)
+        age_factor = 1.0 + abs(age - 40) * -0.01
+        age_factor = max(0.7, min(1.2, age_factor))
+        
+        # 3. Случайный фактор
+        random_factor = 0.7 + self.random.random() * 0.6
+        
+        return base_benefit * fx_factor * age_factor * random_factor
+
+    def _calculate_investment_benefit(self, row):
+        """Расчет выгоды от инвестиций"""
+        balance = row.get('avg_monthly_balance_KZT', 0)
+        age = row.get('age', 30)
+        total_spending = row.get('TOTAL_m', 0)
+        
+        # Повышаем минимальный порог и добавляем более строгие условия
+        if balance < 200000 or total_spending < 100000:  # Выше пороги
+            return 0
+        
+        # Снижаем базовый потенциальный доход
+        base_benefit = balance * 0.008  # 0.8% потенциальный доход (было 1.5%)
+        
+        # Модификаторы
+        # 1. Возрастной фактор (только молодые и средний возраст)
+        if age < 25 or age > 50:
+            age_factor = 0.3  # Снижаем для очень молодых и пожилых
+        else:
+            age_factor = 1.0 + abs(age - 35) * -0.02  # Пик в 35 лет
+        age_factor = max(0.2, min(1.2, age_factor))
+        
+        # 2. Фактор свободных средств (более строгий)
+        free_money = balance - total_spending
+        if free_money < 50000:  # Должно быть достаточно свободных средств
+            return 0
+        free_money_factor = min(1.2, free_money / 200000)
+        
+        # 3. Фактор риска (более консервативный)
+        risk_factor = 0.3 + self.random.random() * 0.4  # Снижаем случайность
+        
+        # 4. Дополнительный фактор - только для клиентов с высоким доходом
+        income_factor = min(1.5, total_spending / 200000)
+        
+        return base_benefit * age_factor * free_money_factor * risk_factor * income_factor
+
+    def _calculate_gold_benefit(self, row):
+        """Расчет выгоды от золотых слитков"""
+        balance = row.get('avg_monthly_balance_KZT', 0)
+        age = row.get('age', 30)
+        
+        if balance < 500000:  # Высокий порог для золота
+            return 0
+        
+        # Базовый потенциальный доход
+        base_benefit = balance * 0.008  # 0.8% потенциальный доход
+        
+        # Модификаторы
+        # 1. Возрастной фактор (старше = консервативнее)
+        age_factor = 1.0 + (age - 40) * 0.01
+        age_factor = max(0.7, min(1.3, age_factor))
+        
+        # 2. Фактор размера баланса
+        balance_factor = min(1.3, balance / 2000000)
+        
+        # 3. Случайный фактор (золото очень волатильно)
+        random_factor = 0.3 + self.random.random() * 1.4
+        
+        return base_benefit * age_factor * balance_factor * random_factor
+
 # Инициализация сервиса
 ml_service = BankingMLService()
 
@@ -307,7 +832,7 @@ def health_check():
 @app.route('/upload/clients', methods=['POST'])
 def upload_clients():
     """Загрузка данных клиентов"""
-    global clients_data
+    global clients_data, data_counts
     
     try:
         if 'file' not in request.files:
@@ -319,12 +844,22 @@ def upload_clients():
         
         if file.filename.endswith('.csv'):
             clients_data = pd.read_csv(file)
+            data_counts['clients'] = len(clients_data)
         else:
             return jsonify({"error": "Поддерживаются только CSV файлы"}), 400
+        
+        # Подсчитываем общее количество данных
+        total_records = sum(data_counts.values())
         
         logger.info(f"Загружены данные {len(clients_data)} клиентов")
         return jsonify({
             "message": f"Загружены данные {len(clients_data)} клиентов",
+            "total_records": total_records,
+            "breakdown": {
+                "clients": data_counts['clients'],
+                "transactions": data_counts['transactions'],
+                "transfers": data_counts['transfers']
+            },
             "columns": list(clients_data.columns),
             "sample": clients_data.head().to_dict('records')
         })
@@ -336,7 +871,7 @@ def upload_clients():
 @app.route('/upload/transactions', methods=['POST'])
 def upload_transactions():
     """Загрузка данных транзакций"""
-    global transactions_data
+    global transactions_data, data_counts
     
     try:
         if 'file' not in request.files:
@@ -348,12 +883,22 @@ def upload_transactions():
         
         if file.filename.endswith('.csv'):
             transactions_data = pd.read_csv(file)
+            data_counts['transactions'] = len(transactions_data)
         else:
             return jsonify({"error": "Поддерживаются только CSV файлы"}), 400
+        
+        # Подсчитываем общее количество данных
+        total_records = sum(data_counts.values())
         
         logger.info(f"Загружены данные {len(transactions_data)} транзакций")
         return jsonify({
             "message": f"Загружены данные {len(transactions_data)} транзакций",
+            "total_records": total_records,
+            "breakdown": {
+                "clients": data_counts['clients'],
+                "transactions": data_counts['transactions'],
+                "transfers": data_counts['transfers']
+            },
             "columns": list(transactions_data.columns),
             "sample": transactions_data.head().to_dict('records')
         })
@@ -365,7 +910,7 @@ def upload_transactions():
 @app.route('/upload/transfers', methods=['POST'])
 def upload_transfers():
     """Загрузка данных переводов"""
-    global transfers_data
+    global transfers_data, data_counts
     
     try:
         if 'file' not in request.files:
@@ -377,12 +922,22 @@ def upload_transfers():
         
         if file.filename.endswith('.csv'):
             transfers_data = pd.read_csv(file)
+            data_counts['transfers'] = len(transfers_data)
         else:
             return jsonify({"error": "Поддерживаются только CSV файлы"}), 400
+        
+        # Подсчитываем общее количество данных
+        total_records = sum(data_counts.values())
         
         logger.info(f"Загружены данные {len(transfers_data)} переводов")
         return jsonify({
             "message": f"Загружены данные {len(transfers_data)} переводов",
+            "total_records": total_records,
+            "breakdown": {
+                "clients": data_counts['clients'],
+                "transactions": data_counts['transactions'],
+                "transfers": data_counts['transfers']
+            },
             "columns": list(transfers_data.columns),
             "sample": transfers_data.head().to_dict('records')
         })
