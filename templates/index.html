@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Banking ML Server</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #fafafa;
+        }
+        .section h2 {
+            color: #34495e;
+            margin-top: 0;
+        }
+        .file-upload {
+            margin: 10px 0;
+        }
+        .file-upload input[type="file"] {
+            margin: 5px 0;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .results {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .notification {
+            background-color: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-left: 4px solid #3498db;
+            border-radius: 0 5px 5px 0;
+        }
+        .notification .client {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .notification .product {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .notification .text {
+            margin-top: 5px;
+            line-height: 1.4;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #3498db;
+        }
+        .stat-label {
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            color: #7f8c8d;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏦 Banking ML Server</h1>
+        <p style="text-align: center; color: #7f8c8d;">Сервер для анализа банковских данных и генерации персонализированных рекомендаций</p>
+
+        <!-- Загрузка данных -->
+        <div class="section">
+            <h2>📊 Загрузка данных</h2>
+            
+            <div class="file-upload">
+                <label for="clientsFile">Данные клиентов (clients.csv):</label>
+                <input type="file" id="clientsFile" accept=".csv">
+                <button onclick="uploadFile('clients')">Загрузить клиентов</button>
+            </div>
+            
+            <div class="file-upload">
+                <label for="transactionsFile">Данные транзакций (transactions.csv):</label>
+                <input type="file" id="transactionsFile" accept=".csv">
+                <button onclick="uploadFile('transactions')">Загрузить транзакции</button>
+            </div>
+            
+            <div class="file-upload">
+                <label for="transfersFile">Данные переводов (transfers.csv):</label>
+                <input type="file" id="transfersFile" accept=".csv">
+                <button onclick="uploadFile('transfers')">Загрузить переводы</button>
+            </div>
+            
+            <div id="uploadStatus"></div>
+        </div>
+
+        <!-- Обработка данных -->
+        <div class="section">
+            <h2>⚙️ Обработка данных</h2>
+            <button onclick="processData()" id="processBtn">Обработать данные</button>
+            <div id="processStatus"></div>
+        </div>
+
+        <!-- Рекомендации -->
+        <div class="section">
+            <h2>🎯 Рекомендации</h2>
+            <div style="margin-bottom: 15px;">
+                <label for="clientIdInput" style="display: block; margin-bottom: 5px; font-weight: bold;">ID клиента:</label>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <input type="number" id="clientIdInput" placeholder="Введите ID клиента (например: 1)" 
+                           style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 200px;"
+                           onkeypress="if(event.key==='Enter') getRecommendationsForClient()">
+                    <button onclick="getRecommendationsForClient()" id="recommendationsBtn" disabled>Получить рекомендации</button>
+                    <button onclick="getAvailableClients()" id="clientsListBtn" disabled style="background-color: #27ae60;">Список клиентов</button>
+                </div>
+                <div id="clientsList" style="display: none; margin-top: 10px;"></div>
+            </div>
+            <div id="recommendationsStatus"></div>
+            <div id="recommendationsResults"></div>
+        </div>
+
+        <!-- Пуш-уведомления -->
+        <div class="section">
+            <h2>📱 Пуш-уведомления</h2>
+            <button onclick="generatePushNotifications()" id="pushBtn" disabled>Сгенерировать пуш-уведомления</button>
+            <div id="pushStatus"></div>
+            <div id="pushResults"></div>
+        </div>
+
+        <!-- Экспорт -->
+        <div class="section">
+            <h2>📄 Экспорт результатов</h2>
+            <button onclick="exportCSV()" id="exportBtn" disabled>Экспортировать в CSV</button>
+            <div id="exportStatus"></div>
+        </div>
+
+        <!-- Статистика -->
+        <div class="section">
+            <h2>📊 Статистика</h2>
+            <button onclick="getStats()" id="statsBtn" disabled>Получить статистику</button>
+            <div id="statsStatus"></div>
+            <div id="statsResults"></div>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <div>Обработка...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080';
+        let isDataProcessed = false;
+
+        function showStatus(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        function showLoading(show = true) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        function enableButtons() {
+            document.getElementById('recommendationsBtn').disabled = false;
+            document.getElementById('clientsListBtn').disabled = false;
+            document.getElementById('pushBtn').disabled = false;
+            document.getElementById('exportBtn').disabled = false;
+            document.getElementById('statsBtn').disabled = false;
+        }
+
+        async function uploadFile(type) {
+            const fileInput = document.getElementById(`${type}File`);
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showStatus('uploadStatus', 'Пожалуйста, выберите файл', 'error');
+                return;
+            }
+
+            showLoading(true);
+            
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch(`${API_BASE}/upload/${type}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showStatus('uploadStatus', result.message, 'success');
+                } else {
+                    showStatus('uploadStatus', result.error, 'error');
+                }
+            } catch (error) {
+                showStatus('uploadStatus', `Ошибка: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function processData() {
+            showLoading(true);
+            
+            try {
+                const response = await fetch(`${API_BASE}/process`, {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showStatus('processStatus', result.message, 'success');
+                    isDataProcessed = true;
+                    enableButtons();
+                } else {
+                    showStatus('processStatus', result.error, 'error');
+                }
+            } catch (error) {
+                showStatus('processStatus', `Ошибка: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function getAvailableClients() {
+            showLoading(true);
+            
+            try {
+                const response = await fetch(`${API_BASE}/clients`);
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let html = '<div class="results">';
+                    html += `<h3>Доступные клиенты (${result.total_count}):</h3>`;
+                    html += '<div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: #f9f9f9;">';
+                    
+                    result.clients.forEach(client => {
+                        html += `<div style="padding: 8px; border-bottom: 1px solid #eee; cursor: pointer;" 
+                                     onclick="selectClient(${client.client_code})">
+                            <strong>ID ${client.client_code}</strong> - ${client.name} 
+                            (${client.status}, ${client.age} лет, ${client.city})
+                            <br><small>Баланс: ${client.avg_monthly_balance_KZT.toLocaleString()} ₸</small>
+                        </div>`;
+                    });
+                    
+                    html += '</div></div>';
+                    document.getElementById('clientsList').innerHTML = html;
+                    document.getElementById('clientsList').style.display = 'block';
+                    showStatus('recommendationsStatus', `Загружен список ${result.total_count} клиентов`, 'success');
+                } else {
+                    showStatus('recommendationsStatus', result.error, 'error');
+                }
+            } catch (error) {
+                showStatus('recommendationsStatus', `Ошибка: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function selectClient(clientId) {
+            document.getElementById('clientIdInput').value = clientId;
+            document.getElementById('clientsList').style.display = 'none';
+            getRecommendationsForClient();
+        }
+
+        async function getRecommendationsForClient() {
+            const clientId = document.getElementById('clientIdInput').value;
+            
+            if (!clientId) {
+                showStatus('recommendationsStatus', 'Пожалуйста, введите ID клиента', 'error');
+                return;
+            }
+            
+            showLoading(true);
+            
+            try {
+                const response = await fetch(`${API_BASE}/recommendations/${clientId}`);
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let html = '<div class="results">';
+                    html += `<h3>Рекомендации для клиента ${result.client_code} (${result.client_name}):</h3>`;
+                    
+                    result.recommendations.forEach((rec, index) => {
+                        html += `<div class="notification">
+                            <div class="product">${index + 1}. ${rec.product}</div>
+                            <div>Выгода: ${rec.benefit_kzt_per_month.toLocaleString()} ₸/мес</div>
+                        </div>`;
+                    });
+                    
+                    html += '</div>';
+                    document.getElementById('recommendationsResults').innerHTML = html;
+                    showStatus('recommendationsStatus', `Рекомендации для клиента ${clientId} получены`, 'success');
+                } else {
+                    showStatus('recommendationsStatus', result.error, 'error');
+                }
+            } catch (error) {
+                showStatus('recommendationsStatus', `Ошибка: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function generatePushNotifications() {
+            showLoading(true);
+            
+            try {
+                const response = await fetch(`${API_BASE}/push-notifications`, {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let html = '<div class="results">';
+                    html += `<h3>Сгенерировано ${result.notifications.length} пуш-уведомлений:</h3>`;
+                    
+                    result.notifications.forEach(notification => {
+                        html += `<div class="notification">
+                            <div class="client">Клиент ${notification.client_code}</div>
+                            <div class="product">Продукт: ${notification.product}</div>
+                            <div class="text">${notification.push_notification}</div>
+                        </div>`;
+                    });
+                    
+                    html += '</div>';
+                    document.getElementById('pushResults').innerHTML = html;
+                    showStatus('pushStatus', result.message, 'success');
+                } else {
+                    showStatus('pushStatus', result.error, 'error');
+                }
+            } catch (error) {
+                showStatus('pushStatus', `Ошибка: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function exportCSV() {
+            showLoading(true);
+            
+            try {
+                const response = await fetch(`${API_BASE}/export/csv`);
+                const result = await response.json();
+                
+                if (response.ok) {
+                    // Создаем и скачиваем файл
+                    const blob = new Blob([result.csv_content], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement('a');
+                    const url = URL.createObjectURL(blob);
+                    link.setAttribute('href', url);
+                    link.setAttribute('download', 'banking_recommendations.csv');
+                    link.style.visibility = 'hidden';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    showStatus('exportStatus', 'CSV файл скачан успешно', 'success');
+                } else {
+                    showStatus('exportStatus', result.error, 'error');
+                }
+            } catch (error) {
+                showStatus('exportStatus', `Ошибка: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function getStats() {
+            showLoading(true);
+            
+            try {
+                const response = await fetch(`${API_BASE}/stats`);
+                const result = await response.json();
+                
+                if (response.ok) {
+                    let html = '<div class="stats">';
+                    html += `<div class="stat-card">
+                        <div class="stat-number">${result.total_clients}</div>
+                        <div class="stat-label">Всего клиентов</div>
+                    </div>`;
+                    html += `<div class="stat-card">
+                        <div class="stat-number">${result.clients_with_recommendations}</div>
+                        <div class="stat-label">С рекомендациями</div>
+                    </div>`;
+                    html += '</div>';
+                    
+                    html += '<h3>Распределение по продуктам:</h3>';
+                    html += '<div class="results">';
+                    for (const [product, count] of Object.entries(result.product_distribution)) {
+                        html += `<div class="notification">
+                            <div class="product">${product}</div>
+                            <div>Клиентов: ${count}</div>
+                        </div>`;
+                    }
+                    html += '</div>';
+                    
+                    document.getElementById('statsResults').innerHTML = html;
+                    showStatus('statsStatus', 'Статистика получена', 'success');
+                } else {
+                    showStatus('statsStatus', result.error, 'error');
+                }
+            } catch (error) {
+                showStatus('statsStatus', `Ошибка: ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Проверка состояния сервера при загрузке
+        window.onload = async function() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                if (response.ok) {
+                    showStatus('uploadStatus', 'Сервер работает. Готов к загрузке данных.', 'success');
+                } else {
+                    showStatus('uploadStatus', 'Сервер недоступен. Убедитесь, что сервер запущен.', 'error');
+                }
+            } catch (error) {
+                showStatus('uploadStatus', 'Не удалось подключиться к серверу. Убедитесь, что сервер запущен на localhost:8080', 'error');
+            }
+        };
+    </script>
+</body>
+</html>
